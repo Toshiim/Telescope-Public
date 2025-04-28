@@ -1,0 +1,24 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Library</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="MassTransit" Version="8.3.7" />
+    <PackageReference Include="MassTransit.RabbitMQ" Version="8.3.7" />
+    <PackageReference Include="Microsoft.Extensions.Options" Version="9.0.4" />
+    <PackageReference Include="TDLib" Version="1.8.45" />
+    <PackageReference Include="TDLib.Api" Version="1.8.45" />
+    <PackageReference Include="tdlib.native" Version="1.8.45" />
+    <PackageReference Include="tdlib.native.win-x64" Version="1.8.45" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ShareLib\ShareLib.csproj" />
+  </ItemGroup>
+
+</Project>
