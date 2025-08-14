@@ -12,7 +12,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\Embedding\Embedding.csproj" />
+    <ProjectReference Include="..\QdrantService\QdrantService.csproj" />
     <ProjectReference Include="..\SqlStorage\SqlStorage.csproj" />
+    <ProjectReference Include="..\Telescope\Telescope.csproj" />
+	  <PackageReference Include="Google.Protobuf" Version="3.31.0" />
   </ItemGroup>
 
 

@@ -46,7 +46,21 @@ namespace SqlStorage
 
             modelBuilder.Entity<DbTelegramRecommendation>()
                 .HasIndex(r => new { r.TelegramUserId, r.MessageId });
-        }
 
+            modelBuilder.Entity<DbTelegramUserChannel>()
+                .HasKey(uc => new { uc.TelegramUserId, uc.ChannelId });
+
+            modelBuilder.Entity<DbTelegramUserChannel>()
+                .HasOne(uc => uc.User)
+                .WithMany(u => u.SubscribedChannels)
+                .HasForeignKey(uc => uc.TelegramUserId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<DbTelegramUserChannel>()
+                .HasOne(uc => uc.Channel)
+                .WithMany(c => c.Subscribers)
+                .HasForeignKey(uc => uc.ChannelId)
+                .OnDelete(DeleteBehavior.Cascade);
+        }
     }
 }

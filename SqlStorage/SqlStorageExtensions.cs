@@ -9,7 +9,7 @@ namespace SqlStorage
         public static IServiceCollection AddSqlStorage(this IServiceCollection services, IConfiguration configuration)
         {
             services.AddDbContext<TelegramDbContext>(options =>
-                options.UseSqlite(configuration.GetConnectionString("DefaultConnection")));
+                options.UseNpgsql(configuration.GetConnectionString("Postgres")));
 
             return services;
         }

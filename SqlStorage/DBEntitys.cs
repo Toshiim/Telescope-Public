@@ -3,16 +3,13 @@ using System.ComponentModel.DataAnnotations;
 
 namespace SqlStorage
 {
-
-    // TODO : Добавить список каналов на которые подписан пользователь.
     public class DbTelegramUser
     {
         [Key]
         public long TelegramUserId { get; set; }
 
-        [Required]
         [MaxLength(100)]
-        public string Username { get; set; }
+        public string? Username { get; set; }
 
         [MaxLength(100)]
         public string? FirstName { get; set; }
@@ -22,9 +19,9 @@ namespace SqlStorage
 
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
-        // Навигационные свойства
         public virtual ICollection<DbTelegramFeedback> Feedbacks { get; set; }
         public virtual ICollection<DbTelegramRecommendation> Recommendations { get; set; }
+        public virtual ICollection<DbTelegramUserChannel> SubscribedChannels { get; set; } = new HashSet<DbTelegramUserChannel>();
 
         public DbTelegramUser()
         {
@@ -57,7 +54,6 @@ namespace SqlStorage
 
         public string? PublicUrl { get; set; }
 
-        // Навигационные свойства
         public virtual ICollection<DbTelegramFeedback> Feedbacks { get; set; }
         public virtual ICollection<DbTelegramRecommendation> Recommendations { get; set; }
 
@@ -109,4 +105,29 @@ namespace SqlStorage
         public virtual DbTelegramMessage Message { get; set; }
     }
 
+    public class DbTelegramUserChannel
+    {
+        public long TelegramUserId { get; set; }
+        public long ChannelId { get; set; }
+
+        public DateTime SubscribedAt { get; set; } = DateTime.UtcNow;
+
+        [ForeignKey("TelegramUserId")]
+        public virtual DbTelegramUser User { get; set; }
+
+        [ForeignKey("ChannelId")]
+        public virtual DbTelegramChannel Channel { get; set; }
+    }
+
+
+    public class DbTelegramChannel
+    {
+        [Key]
+        public long ChannelId { get; set; }
+        [Required]
+        [MaxLength(100)]
+        public string ChannelName { get; set; }
+
+        public virtual ICollection<DbTelegramUserChannel> Subscribers { get; set; } = new HashSet<DbTelegramUserChannel>();
+    }
 }

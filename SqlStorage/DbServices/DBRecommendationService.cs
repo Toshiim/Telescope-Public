@@ -2,11 +2,11 @@
 
 namespace SqlStorage.DbServices
 {
-    public class TelegramRecommendationService
+    public class DBRecommendationService
     {
         private readonly TelegramDbContext _context;
 
-        public TelegramRecommendationService(TelegramDbContext context)
+        public DBRecommendationService(TelegramDbContext context)
         {
             _context = context;
         }
@@ -23,14 +23,6 @@ namespace SqlStorage.DbServices
             await _context.SaveChangesAsync();
 
             return recommendation;
-        }
-
-        public async Task<List<Guid>> GetRecommendedMessagesForUserAsync(long telegramUserId)
-        {
-            return await _context.Recommendations
-                .Where(r => r.TelegramUserId == telegramUserId)
-                .Select(r => r.MessageId)
-                .ToListAsync();
         }
     }
 }

@@ -1,27 +1,33 @@
-﻿using Microsoft.Extensions.AI;
-using OllamaSharp;
-using ShareLib.Entities;
-using ShareLib.Settings;
-using Microsoft.Extensions.Options;
+﻿using ShareLib.Entities;
 using QdrantService;
 using RecommendationService;
 using SqlStorage.DbServices;
+using Microsoft.Extensions.Logging;
+using Embedding;
 
-namespace Embedding
+namespace MessageHandler
 {
     public class MessageProcessor
     {
         private readonly QdrantRepository _qdrantRepository;
-        private readonly OllamaApiClient _ollamaClient;
         private readonly RecommendationSystem _recommendationSystem;
-        private readonly TelegramMessageService _telegramMessageService;
-        public MessageProcessor (QdrantRepository qdrantRepository, RecommendationSystem recommendationSystem,
-            TelegramMessageService telegramMessageService, IOptions<AppSettings> options)
+        private readonly DBMessageService _telegramMessageService;
+        private readonly ILogger<MessageProcessor> _logger;
+        private readonly OllamaEmbedding _ollamaEmbedding;
+
+        public MessageProcessor(
+            QdrantRepository qdrantRepository,
+            RecommendationSystem recommendationSystem,
+            DBMessageService telegramMessageService,
+            ILogger<MessageProcessor> logger,
+            OllamaEmbedding ollamaEmbedding
+            )
         {
             _qdrantRepository = qdrantRepository ?? throw new ArgumentNullException(nameof(qdrantRepository));
             _recommendationSystem = recommendationSystem ?? throw new ArgumentNullException(nameof(recommendationSystem));
             _telegramMessageService = telegramMessageService ?? throw new ArgumentNullException(nameof(telegramMessageService));
-            _ollamaClient = new OllamaApiClient(new Uri(options.Value.Ollama.ConnectionString), options.Value.Ollama.Model);
+            _logger = logger;
+            _ollamaEmbedding = ollamaEmbedding ?? throw new ArgumentNullException(nameof(ollamaEmbedding));
         }
 
         public async Task InitializeCollectionAsync()
@@ -31,20 +37,18 @@ namespace Embedding
 
         public async Task ProcessMessageAsync(TelegramMessage message)
         {
-            Console.WriteLine($" Обрабатываем текст: {message.MessageText}");
 
             if (message.MessageText != "")
             {
-                var embedding = await _ollamaClient.GenerateEmbeddingAsync(message.MessageText);
-                float[] vector = embedding.Vector.ToArray();
+                float[] vector = await _ollamaEmbedding.GenerateEmbedding(message.MessageText);
 
-                Console.WriteLine($" Эмбеддинг: {string.Join(", ", vector.Take(5))}...");
+                _logger.LogInformation("Эмбеддинг : {EmbeddingPreview}...", string.Join(", ", vector.Take(5)));
 
                 await _qdrantRepository.SaveEmbeddingAsync(message, vector);
                 await _telegramMessageService.SaveMessageAsync(message);
 
                 // В сервис рекомендаций
-                await _recommendationSystem.ProcessRecommendationAsync(message.Id);
+                await _recommendationSystem.ProcessRecommendationAsync(message);
             }
         }
     }

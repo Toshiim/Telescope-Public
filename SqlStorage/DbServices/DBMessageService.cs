@@ -2,11 +2,11 @@
 
 namespace SqlStorage.DbServices
 {
-    public class TelegramMessageService
+    public class DBMessageService
     {
         private readonly TelegramDbContext _context;
 
-        public TelegramMessageService(TelegramDbContext context)
+        public DBMessageService(TelegramDbContext context)
         {
             _context = context;
         }
@@ -28,13 +28,5 @@ namespace SqlStorage.DbServices
             await _context.SaveChangesAsync();
             return message;
         }
-
-    
-        public async Task<string?> GetMessagePublicUrlAsync(Guid messageId)
-        {
-            var message = await _context.Messages.FindAsync(messageId);
-            return message?.PublicUrl;
-        }
-
     }
 }

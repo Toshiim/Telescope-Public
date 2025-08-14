@@ -15,10 +15,12 @@
     <PackageReference Include="TDLib.Api" Version="1.8.45" />
     <PackageReference Include="tdlib.native" Version="1.8.45" />
     <PackageReference Include="tdlib.native.win-x64" Version="1.8.45" />
+	<PackageReference Include="Google.Protobuf" Version="3.31.0" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\ShareLib\ShareLib.csproj" />
+    <ProjectReference Include="..\SqlStorage\SqlStorage.csproj" />
   </ItemGroup>
 
 </Project>

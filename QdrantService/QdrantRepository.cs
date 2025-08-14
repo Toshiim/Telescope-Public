@@ -3,6 +3,7 @@ using Qdrant.Client.Grpc;
 using ShareLib.Entities;
 using Microsoft.Extensions.Options;
 using ShareLib.Settings;
+using Microsoft.Extensions.Logging;
 
 namespace QdrantService
 {
@@ -11,9 +12,11 @@ namespace QdrantService
         private readonly QdrantClient _qdrantClient;
         private readonly string _collectionName;
         private readonly ulong _vectorSize;
+        private readonly ILogger<QdrantRepository> _logger;
 
-        public QdrantRepository(IOptions<AppSettings> options)
+        public QdrantRepository(IOptions<AppSettings> options, ILogger<QdrantRepository> logger)
         {
+            _logger = logger;
             _qdrantClient = new QdrantClient(new Uri(options.Value.Qdrant.ConnectionString));
             _vectorSize = options.Value.Qdrant.VectorSize;
             _collectionName = options.Value.Qdrant.CollectionName;
@@ -21,26 +24,34 @@ namespace QdrantService
 
         public async Task InitializeCollectionAsync()
         {
-            var collections = await _qdrantClient.ListCollectionsAsync();
-            if (!collections.Contains(_collectionName))
+            try
             {
-                await _qdrantClient.CreateCollectionAsync(_collectionName, new VectorParams
+                var collections = await _qdrantClient.ListCollectionsAsync();
+                if (!collections.Contains(_collectionName))
                 {
-                    Size = _vectorSize, 
-                    Distance = Distance.Cosine
-                });
-                Console.WriteLine($" Коллекция '{_collectionName}' создана.");
+                    await _qdrantClient.CreateCollectionAsync(_collectionName, new VectorParams
+                    {
+                        Size = _vectorSize,
+                        Distance = Distance.Cosine
+                    });
+                    _logger.LogInformation("Коллекция '{CollectionName}' создана.", _collectionName);
+                }
+                else
+                {
+                    _logger.LogInformation("Коллекция '{CollectionName}' уже существует.", _collectionName);
+                }
             }
-            else
+            catch (Exception ex)
             {
-                Console.WriteLine($" Коллекция '{_collectionName}' уже существует.");
+                _logger.LogError(ex, "Ошибка при инициализации коллекции '{CollectionName}'.", _collectionName);
+                throw;
             }
         }
 
         public async Task SaveEmbeddingAsync(TelegramMessage message, float[] vector)
         {
-            Console.WriteLine($" Сохраняем эмбеддинг для сообщения: {message.Id}");
-            // TODO :  Избыточно, почистить. 
+            _logger.LogInformation("Сохраняем эмбеддинг для сообщения: {MessageId}", message.Id);
+
             var point = new PointStruct
             {
                 Id = new PointId { Uuid = message.Id.ToString() },
@@ -55,12 +66,36 @@ namespace QdrantService
                     ["has_video"] = new Value { BoolValue = message.HasVideo },
                     ["timestamp"] = new Value { StringValue = message.Timestamp.ToString("o") },
                     ["Message link"] = new Value { StringValue = message.PublicUrl },
-                    ["Is_liked"] = new Value { StringValue = "nule" } 
+                    ["Is_liked"] = new Value { StringValue = "nule" }
                 }
             };
 
-            await _qdrantClient.UpsertAsync(_collectionName, new[] { point });
-            Console.WriteLine($" Данные сохранены в Qdrant");
+            try
+            {
+                await _qdrantClient.UpsertAsync(_collectionName, new[] { point });
+                _logger.LogInformation("Данные успешно сохранены в Qdrant для сообщения {MessageId}.", message.Id);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Ошибка при сохранении эмбеддинга для сообщения {MessageId}.", message.Id);
+                throw;
+            }
+        }
+
+        public async Task<List<string>> SearchAsync(float[] vector, ulong topK = 5)
+        {
+            var result = await _qdrantClient.QueryAsync(
+                    collectionName: _collectionName,
+                    query: vector,
+                    limit: topK);
+
+            var links = result
+                .Where(hit => hit.Payload.ContainsKey("Message link"))
+                .Select(hit => hit.Payload["Message link"].StringValue)
+                .Where(link => !string.IsNullOrEmpty(link))
+                .ToList();
+
+            return links;
         }
     }
 }

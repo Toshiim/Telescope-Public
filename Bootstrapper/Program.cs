@@ -1,6 +1,7 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using MassTransit;
+using MessageHandler;
 using Embedding;
 using Telescope;
 using RecommendationService;
@@ -9,6 +10,7 @@ using QdrantService;
 using SqlStorage;
 using SqlStorage.DbServices;
 using ShareLib.Settings;
+using Serilog;
 
 namespace Bootstrapper
 {
@@ -16,57 +18,79 @@ namespace Bootstrapper
     {
         static async Task Main(string[] args)
         {
-            var host = Host.CreateDefaultBuilder(args)
-                .ConfigureServices((context, services) =>
-                {
-                    services.Configure<AppSettings>(context.Configuration);
+            Log.Logger = new LoggerConfiguration()
+                .MinimumLevel.Debug()
+                .Enrich.FromLogContext()
+                .WriteTo.Console()
+                .CreateLogger();
 
-                    services.AddSqlStorage(context.Configuration);  
-          
-                    services.AddSingleton<QdrantRepository>();
-                    services.AddSingleton<RecommendationSystem>();
+            try
+            {
+                Log.Information("Запуск Bootstrapper...");
 
-                    services.AddScoped<TelegramMessageService>();
-                    services.AddScoped<TelegramUserService>();
-                    services.AddScoped<TelegramFeedbackService>();
-                    services.AddScoped<TelegramRecommendationService>();
-                    services.AddScoped<TelegramDbContext>();
-
-                    services.AddSingleton<TelegramBotSender>();
-
-                    services.AddMassTransit(x =>
+                var host = Host.CreateDefaultBuilder(args)
+                    .UseSerilog()
+                    .ConfigureServices((context, services) =>
                     {
-                        x.AddConsumer<RabbitMQConsumer>();
+                        services.Configure<AppSettings>(context.Configuration);
 
-                        x.UsingRabbitMq((context, cfg) =>
+                        services.AddSqlStorage(context.Configuration);
+                        services.AddScoped<QdrantRepository>();
+                        services.AddScoped<RecommendationSystem>();
+                        services.AddScoped<OllamaEmbedding>();
+
+                        services.AddScoped<DBMessageService>();
+                        services.AddScoped<DBUserService>();
+                        services.AddScoped<DBFeedbackService>();
+                        services.AddScoped<DBRecommendationService>();
+                        services.AddScoped<DBChannelService>();
+
+                        services.AddSingleton<TelegramBotSender>();
+                        services.AddHostedService(sp => sp.GetRequiredService<TelegramBotSender>());
+
+                        services.AddMassTransit(x =>
                         {
-                            cfg.Host("rabbitmq://localhost", h =>
+                            x.AddConsumer<RabbitMQConsumer>();
+                            x.UsingRabbitMq((context, cfg) =>
                             {
-                                h.Username("guest");
-                                h.Password("guest");
-                            });
+                                cfg.Host("rabbitmq://localhost", h =>
+                                {
+                                    h.Username("guest");
+                                    h.Password("guest");
+                                });
 
-                            cfg.ReceiveEndpoint("telegram_posts", e =>
-                            {
-                                e.ConfigureConsumer<RabbitMQConsumer>(context);
+                                cfg.ReceiveEndpoint("telegram_posts", e =>
+                                {
+                                    e.ConfigureConsumer<RabbitMQConsumer>(context);
+                                });
                             });
                         });
-                    });
 
-                    services.AddScoped<RabbitMQProducer>();
+                        services.AddScoped<RabbitMQProducer>();
+                        services.AddSingleton<PublicationParser>(); 
+                        services.AddSingleton<IPublicationParser>(sp => sp.GetRequiredService<PublicationParser>()); 
+                        services.AddHostedService(sp => sp.GetRequiredService<PublicationParser>()); 
 
+                        services.AddScoped<MessageProcessor>();
+                    })
+                    .Build();
 
-                    // TODO : Реворк на медиатр. Необходимо разделение работы с БД и логики,
-                    // Цель - перевести логику без состояний в Singltone, работу с БД в Scoped.
-                    services.AddHostedService<EmbeddingService>();
-                    services.AddHostedService<PublicationParser>();
+                using (var scope = host.Services.CreateScope())
+                {
+                    var qdrantRepository = scope.ServiceProvider.GetRequiredService<QdrantRepository>();
+                    await qdrantRepository.InitializeCollectionAsync(); // Инициализация коллекции Qdrant при запуске
+                }
 
-                    services.AddSingleton<MessageProcessor>();
-                })
-                .Build();
-
-            await host.RunAsync();
+                await host.RunAsync();
+            }
+            catch (Exception ex)
+            {
+                Log.Fatal(ex, "Приложение упало при запуске");
+            }
+            finally
+            {
+                Log.CloseAndFlush();
+            }
         }
     }
 }
-

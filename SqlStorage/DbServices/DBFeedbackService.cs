@@ -2,11 +2,11 @@
 
 namespace SqlStorage.DbServices
 {
-    public class TelegramFeedbackService
+    public class DBFeedbackService
     {
         private readonly TelegramDbContext _context;
 
-        public TelegramFeedbackService(TelegramDbContext context)
+        public DBFeedbackService(TelegramDbContext context)
         {
             _context = context;
         }

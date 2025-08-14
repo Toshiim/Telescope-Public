@@ -5,6 +5,8 @@ using TelegramBotService;
 using Microsoft.Extensions.Options;
 using ShareLib.Settings;
 using SqlStorage.DbServices;
+using Microsoft.Extensions.Logging;
+using ShareLib.Entities;
 
 namespace RecommendationService
 {
@@ -13,83 +15,104 @@ namespace RecommendationService
         private readonly QdrantClient _qdrantClient;
         private readonly string _collectionName;
         private readonly TelegramBotSender _telegramBotService;
-        private readonly TelegramUserService _telegramUserService;
-        private readonly TelegramMessageService _telegramMessageService;
-        private readonly TelegramFeedbackService _telegramFeedbackService;
-        private readonly TelegramRecommendationService _telegramRecommendationService;
+        private readonly DBChannelService _telegramChannelService;
+        private readonly DBMessageService _telegramMessageService;
+        private readonly DBFeedbackService _telegramFeedbackService;
+        private readonly DBRecommendationService _telegramRecommendationService;
+        private readonly ILogger<RecommendationSystem> _logger;
 
-
-        public RecommendationSystem(TelegramBotSender telegramBotSender,TelegramRecommendationService telegramRecommendationService,
-            TelegramUserService telegramUserService, TelegramMessageService telegramMessageService, TelegramFeedbackService telegramFeedbackService, IOptions<AppSettings> options)
+        public RecommendationSystem(
+            TelegramBotSender telegramBotSender,
+            DBRecommendationService telegramRecommendationService,
+            DBChannelService telegramChannelService,
+            DBMessageService telegramMessageService,
+            DBFeedbackService telegramFeedbackService,
+            IOptions<AppSettings> options,
+            ILogger<RecommendationSystem> logger)
         {
             _qdrantClient = new QdrantClient(new Uri(options.Value.Qdrant.ConnectionString));
             _telegramBotService = telegramBotSender ?? throw new ArgumentNullException(nameof(telegramBotSender));
-            _telegramUserService = telegramUserService ?? throw new ArgumentNullException(nameof(telegramBotSender));
+            _telegramChannelService = telegramChannelService ?? throw new ArgumentNullException(nameof(telegramChannelService));
             _telegramMessageService = telegramMessageService ?? throw new ArgumentNullException(nameof(telegramMessageService));
             _telegramFeedbackService = telegramFeedbackService ?? throw new ArgumentNullException(nameof(telegramFeedbackService));
             _telegramRecommendationService = telegramRecommendationService ?? throw new ArgumentNullException(nameof(telegramRecommendationService));
             _collectionName = options.Value.Qdrant.CollectionName;
+            _logger = logger;
         }
 
-        public async Task ProcessRecommendationAsync(Guid MessageID)
+        public async Task ProcessRecommendationAsync(TelegramMessage Message)
         {
-            Console.WriteLine($" Поиск записи с ID: {MessageID} в коллекции '{_collectionName}'");
-            var userIds = await _telegramUserService.GetAllUserIdsAsync();
-            var messageLink = await _telegramMessageService.GetMessagePublicUrlAsync(MessageID);
-            // TODO : индивидуальные каналы и рекомендации, для PoC и так пойдёт.
+            _logger.LogInformation("Поиск записи с ID: {MessageID} в коллекции '{CollectionName}'", Message, _collectionName);
+            var userIds = await _telegramChannelService.GetUserIdsByChannelIdAsync(Message.ChannelId);
 
             foreach (var userId in userIds)
             {
-                var LikedMessages = await _telegramFeedbackService.GetUserLikedMessagesAsync(userId);
-                var DislikedMessages = await _telegramFeedbackService.GetUserDislikedMessagesAsync(userId);
-                var feedbacks = LikedMessages.Count + DislikedMessages.Count;
+                var likedMessages = await _telegramFeedbackService.GetUserLikedMessagesAsync(userId);
+                var dislikedMessages = await _telegramFeedbackService.GetUserDislikedMessagesAsync(userId);
+                var feedbacks = likedMessages.Count + dislikedMessages.Count;
 
-                if (feedbacks < 5 && LikedMessages.Count == 0)
+                double threshold = ComputeAdaptiveThreshold(feedbacks);
+                bool exploration = Random.Shared.NextDouble() < 0.1; // 10% шанс на исследование
+
+                if (feedbacks < 5 && likedMessages.Count == 0 || exploration)
                 {
-                    Console.WriteLine($" Недостаточно отзывов для пользователя {userId}. Пропускаем сообщение {MessageID}.");
-                    await _telegramBotService.SendInteractiveMessageAsync(userId, messageLink, MessageID, true);
-                    await _telegramRecommendationService.SaveRecommendationAsync(userId, MessageID);
+                    _logger.LogInformation("Недостаточно отзывов для пользователя {UserId}. Пропускаем сообщение {MessageID}.", userId, Message);
+                    await _telegramBotService.SendInteractiveMessageAsync(userId, Message.PublicUrl, Message.Id, true, 0, 0);
+                    await _telegramRecommendationService.SaveRecommendationAsync(userId, Message.Id);
                 }
                 else
                 {
-                    Console.WriteLine($" Поиск рекомендаций для пользователя {userId} на основе отзывов.");
+                    _logger.LogInformation("Поиск рекомендаций для пользователя {UserId} на основе отзывов.", userId);
                     try
                     {
-                        var searchResultBest = await _qdrantClient.QueryAsync(collectionName: _collectionName,
-                                query: new RecommendInput
-                                {
-                                    Positive = { LikedMessages.Select(id => new VectorInput { Id = id }) },
-                                    Negative = { DislikedMessages.Select(id => new VectorInput { Id = id }) },
-                                    Strategy = RecommendStrategy.BestScore
-                                },
-                                filter: HasId(MessageID),
-                                limit: 1
-                            );
+                        var searchResultBest = await _qdrantClient.QueryAsync(
+                            collectionName: _collectionName,
+                            query: new RecommendInput
+                            {
+                                Positive = { likedMessages.Select(id => new VectorInput { Id = id }) },
+                                Negative = { dislikedMessages.Select(id => new VectorInput { Id = id }) },
+                                Strategy = RecommendStrategy.BestScore
+                            },
+                            filter: HasId(Message.Id),
+                            limit: 1
+                        );
 
-                        Console.WriteLine($" Рекомендации для пользователя {userId} на основе отзывов:");
                         var recommendedMessage = searchResultBest.FirstOrDefault();
-                        Console.WriteLine($"  ID: {MessageID}, Score: {recommendedMessage.Score}");
+                        _logger.LogInformation("ID: {MessageID}, Score: {Score}", Message, recommendedMessage?.Score);
 
-                        // TODO: Проработать коэффициент.
-                        if (recommendedMessage.Score > 0.2) // Порог рекомендаций 
+                        double? score = recommendedMessage?.Score;
+
+                        bool isRecommended = exploration || (score.HasValue && score.Value > threshold);
+
+                        if (isRecommended)
                         {
-                            Console.WriteLine($" Рекомендовано сообщение {MessageID} пользователю {userId}");
-                            await _telegramBotService.SendInteractiveMessageAsync(userId, messageLink, MessageID, true); 
-                            await _telegramRecommendationService.SaveRecommendationAsync(userId, MessageID);
+                            _logger.LogInformation("Рекомендовано сообщение {MessageID} пользователю {UserId}", Message, userId);
+                            await _telegramBotService.SendInteractiveMessageAsync(userId, Message.PublicUrl, Message.Id, true, score, threshold);
+                            await _telegramRecommendationService.SaveRecommendationAsync(userId, Message.Id);
                         }
                         else
                         {
-                            Console.WriteLine($" Сообщение {recommendedMessage.Id} не рекомендовано.");
-                            await _telegramBotService.SendInteractiveMessageAsync(userId, messageLink, MessageID, false);
+                            _logger.LogInformation("Сообщение {MessageID} не рекомендовано.", recommendedMessage?.Id);
+                            await _telegramBotService.SendInteractiveMessageAsync(userId, Message.PublicUrl, Message.Id, false, score, threshold);
                         }
-
                     }
                     catch (Exception ex)
                     {
-                        Console.WriteLine($"Ошибка при запросе (BestScore): {ex.Message}");
+                        _logger.LogError(ex, "Ошибка при запросе (BestScore)");
                     }
                 }
             }
         }
+
+        private double ComputeAdaptiveThreshold(int feedbacks)
+        {
+            double baseThreshold = 0.3;
+            double maxThreshold = 0.7;
+            if (feedbacks <= 0) return baseThreshold;
+
+            double normalized = Math.Log(feedbacks + 1) / Math.Log(100 + 1); // log(1) до log(101) => 0..1
+            return baseThreshold + (maxThreshold - baseThreshold) * normalized;
+        }
+
     }
 }
