@@ -27,7 +27,7 @@
   <ItemGroup>
     <ProjectReference Include="..\Embending\MessageHandler.csproj" />
     <ProjectReference Include="..\SqlStorage\SqlStorage.csproj" />
-    <ProjectReference Include="..\Telescope\Telescope.csproj" />
+    <ProjectReference Include="..\Telescope\TelegramUserApi.csproj" />
   </ItemGroup>
 
 	<ItemGroup>
