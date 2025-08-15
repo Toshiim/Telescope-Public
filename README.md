@@ -41,13 +41,26 @@ Telescope — система рекомендаций постов из Telegram
 ---
 
 **Холодный старт** — новым пользователям бот отправляет все посты из выбранных каналов, пока не наберётся достаточно лайков/дизлайков для персонализации.  
+
 <img src="https://github.com/user-attachments/assets/fb279d6f-495e-4321-b3e3-22eaaec7b8b8" alt="Холодный старт" width="500"/>
 
 
 **Персонализированные рекомендации** — после сбора достаточного количества реакций бот начинает отправлять только релевантные посты.  
+
 <img src="https://github.com/user-attachments/assets/3f6c2326-cf14-4b02-bf0b-476bca8e4789" alt="Персональные рекомендации" width="500"/>
 
 
 **Семантический поиск** реализован по всей коллекции точек. С семантически уникальными текстами поиск работает хорошо, способен найти и переформулированные и минимизированные текста: 
+
 <img src="https://github.com/user-attachments/assets/c84686ac-34ce-42ac-8c5f-9e7fbfa2ebbc" alt="Семантический поиск" width="500"/>
+
+--- 
+
+Структура SQL БД:
+
+<img width="530" height="746" alt="image" src="https://github.com/user-attachments/assets/6fd6fed1-1be9-4425-9d18-d1f09aa2634f" />
+
+Коллекция точек в Qdrant. Отчётливо видно кластеры:
+
+<img width="1280" height="620" alt="image" src="https://github.com/user-attachments/assets/66d63211-ba6a-4a78-a86d-2a9307f25689" />
 
