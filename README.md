@@ -62,5 +62,6 @@ Telescope — система рекомендаций постов из Telegram
 
 Коллекция точек в Qdrant. Отчётливо видно кластеры:
 
-<img width="1280" height="620" alt="image" src="https://github.com/user-attachments/assets/66d63211-ba6a-4a78-a86d-2a9307f25689" />
+<img width="796" height="763" alt="image" src="https://github.com/user-attachments/assets/abbd5dd7-36ae-4fb5-b1bf-3508b06ac56b" />
+
 
